@@ -148,26 +148,39 @@ def _type_effectiveness(move_type: str, defender_types: list[str],
 
 def _stab(move_type: str, attacker: PokemonState) -> float:
     """
-    Correct Gen 9 STAB with Tera:
-    - Not Tera: 1.5x for original types, Adaptability → 2.0x
-    - Terastallized:
-        * Tera type matches move: 2.0x (Adaptability → 2.25x)
-        * Original type matches move (not Tera type): 1.5x
+    Correct Gen 9 STAB with Tera.
+
+    Type comparisons are case-insensitive (both sides normalised to uppercase),
+    so callers may pass "Electric" or "ELECTRIC" equivalently.
+
+    Contract for callers:
+      - move_type: any casing, e.g. "Ground" or "GROUND"
+      - attacker.types: list of type strings, any casing
+      - attacker.tera_type: type string or None, any casing
+
+    Rules:
+      - Not Tera: 1.5x for original types, Adaptability → 2.0x
+      - Terastallized:
+          * Tera type matches move: 2.0x (Adaptability → 2.25x)
+          * Original type matches move (not Tera type): 1.5x (conservative)
     """
     ability_id = (attacker.ability or "").lower().replace(" ", "").replace("-", "")
     adaptability = (ability_id == "adaptability")
 
+    move_up = move_type.upper()
+    types_up = {t.upper() for t in attacker.types if t}
+
     if attacker.is_terastallized and attacker.tera_type:
-        tera = attacker.tera_type
+        tera = attacker.tera_type.upper()
         # We need to know the pre-Tera original types. poke-env sets types=[tera_type]
         # after Tera, so we reconstruct by checking if move_type == tera_type.
-        if move_type == tera:
+        if move_up == tera:
             return 2.25 if adaptability else 2.0
         # Original types: we don't have them post-Tera in poke-env. Conservative: 1.0
         # In practice callers should pass original_types separately for this case.
         return 1.0
     else:
-        if move_type in attacker.types:
+        if move_up in types_up:
             return 2.0 if adaptability else 1.5
         return 1.0
 
@@ -264,17 +277,18 @@ class DamageCalculator:
         # Screens
         base_dmg *= screen
 
-        # Weather
+        # Weather (move_type may be uppercase from poke-env — normalise)
+        move_type_up = move.move_type.upper()
         weather_mult = 1.0
         if field.weather in ("RainDance", "PrimordialSea"):
-            if move.move_type == "Water":
+            if move_type_up == "WATER":
                 weather_mult = 1.5
-            elif move.move_type == "Fire":
+            elif move_type_up == "FIRE":
                 weather_mult = 0.5
         elif field.weather in ("SunnyDay", "DesolateLand"):
-            if move.move_type == "Fire":
+            if move_type_up == "FIRE":
                 weather_mult = 1.5
-            elif move.move_type == "Water":
+            elif move_type_up == "WATER":
                 weather_mult = 0.5
         base_dmg *= weather_mult
 
@@ -312,9 +326,9 @@ class DamageCalculator:
 
         # Ability-type boosts (Transistor, Dragon's Maw, etc.)
         ability_type_mult = 1.0
-        if ability_id == "transistor" and move.move_type == "Electric":
+        if ability_id == "transistor" and move_type_up == "ELECTRIC":
             ability_type_mult = 1.5
-        elif ability_id == "dragonsmaw" and move.move_type == "Dragon":
+        elif ability_id == "dragonsmaw" and move_type_up == "DRAGON":
             ability_type_mult = 1.5
         elif ability_id == "punkrock":
             # Sound moves boosted 30%. We don't track sound flags easily here.

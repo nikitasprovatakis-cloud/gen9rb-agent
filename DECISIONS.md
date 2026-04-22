@@ -176,19 +176,51 @@ plus a D6 integration test. All six deliverables pass acceptance criteria.
 |-------------|--------|-----------|
 | D1 – set_pool.py | PASS | 508 species loaded, 7-day TTL cache, `to_id()` normalization |
 | D2 – set_predictor.py | PASS | Bayesian update over role distribution, `observe_*` API |
-| D3 – features.py | PASS | FEATURE_DIM=947, (912 per-Pokemon + 35 global), float32, no NaN/Inf |
+| D3 – features.py | PASS | FEATURE_DIM=959, (924 per-Pokemon + 35 global), float32, no NaN/Inf |
 | D4 – formes.py | PASS | Palafin/Minior/Morpeko/Terapagos/Cramorant transitions |
-| D5 – damage_calc.py | PASS | Metamon formula extended with items/abilities, 65/65 unit tests pass |
-| D6 – integration test | PASS | 10/10 battles, 515 turns, mean 1.0ms extraction, max 2.4ms |
+| D5 – damage_calc.py | PASS | Metamon formula extended with items/abilities; 20-scenario validation pass |
+| D6 – integration test | PASS | 10/10 battles, 868 turns, mean 1.3ms extraction, max 4.8ms |
 
 ## Architecture Choices
 
-### FEATURE_DIM = 947
-76 features × 12 Pokemon + 35 global. Layout frozen here for Phase 3 neural net input.
-Per-Pokemon: species_idx, hp, status(7), boosts(7), base_stats(6), speed_tier,
-             type_move_probs(18), functional_probs(5), item_probs(8), expected_damage,
-             tera_available, tera_type_dist(18), times_active, is_revealed.
-Global: weather(5), terrain(5), trick_room(2), hazards×2(8), screens×2(12), turn, remaining×2.
+### FEATURE_DIM = 959
+77 features × 12 Pokemon + 35 global = 924 + 35. Layout frozen here for Phase 3 neural net input.
+
+Per-Pokemon layout (indices within each 77-element slot):
+```
+[0]     species_idx    — embedding index [0,508]; NOT one-hot. Phase 4 must use nn.Embedding.
+[1]     hp_fraction
+[2]     is_active      — 1.0 if this Pokemon is currently active, else 0.0
+[3:10]  status_onehot(7)
+[10:17] stat_boosts(7)
+[17:23] base_stats(6)
+[23]    speed_tier
+[24:42] type_move_probs(18)
+[42]    priority_prob
+[43]    setup_prob
+[44]    hazard_prob
+[45]    removal_prob
+[46]    pivot_prob
+[47:55] item_probs(8)
+[55]    expected_damage_norm  — DamageCalculator output / inferred opp max HP
+[56]    tera_available
+[57:75] tera_type_dist(18)
+[75]    times_active
+[76]    is_revealed
+```
+
+Global (35 elements): weather(5), terrain(5), trick_room(2), hazards×2(8), screens×2(12), turn(1), remaining×2(2).
+
+### Slot ordering: stable identity across turns
+Own slots 0-5: insertion order from `battle.team` at turn 1 (= initial team order sent by Showdown).
+Opp slots 6-11: reveal order — slots fill as new opponents are seen for the first time.
+Slots never change within a battle, ensuring the RL policy can track identities frame-to-frame.
+`is_active` at index [2] carries which slot is currently active (replaces sort-based ordering).
+
+### species_idx is an embedding index — NOT one-hot
+Feature [0] is an integer in [0, 508] identifying the species. Phase 4 must pass it through
+`nn.Embedding(509, embed_dim)`, not treat it as a float feature or one-hot encode it.
+The rest of features [1:77] are floats and feed into the main network trunk directly.
 
 ### Damage calculator: Metamon's formula extended
 The three candidate approaches from the brief were: Metamon's, poke-env's, @smogon/calc.
@@ -196,9 +228,27 @@ The three candidate approaches from the brief were: Metamon's, poke-env's, @smog
 - @smogon/calc is TypeScript; bridging via Node adds runtime complexity.
 - Metamon's `damage_equation` in `baselines/base.py` covers ~90% of cases and is
   already in our dependency tree.
-We extended it with Life Orb, Choice Band/Specs, Expert Belt, Expert Belt,
+We extended it with Life Orb, Choice Band/Specs, Expert Belt,
 Muscle Band, Wise Glasses, Huge Power/Pure Power, Adaptability, Technician,
 Tinted Lens, Transistor, Dragon's Maw, Sand/Snow defensive boosts.
+
+Feature [55] (`expected_damage_norm`) routes through the full `DamageCalculator` including
+item/ability modifiers. Do not simplify this to the bare formula — the modifiers matter
+(Life Orb alone is 1.3x, Choice Band is 1.5x).
+
+### Damage validation: 20-scenario absolute comparison vs Showdown reference
+Results from `scripts/validate_damage.py` (run 2026-04-22):
+
+| Scenario group | Max |Δ| | Mean |Δ| | Verdict |
+|---|---|---|---|
+| Single-multiplier (16 scenarios) | 4.0 HP | 2.1 HP | PASS (≤5 HP) |
+| Compound (4 scenarios) | 4.5 HP | 3.8 HP | expected |
+
+Systematic bias: our formula over-estimates by **2–4 HP (2–5% relative)** versus Showdown.
+Root cause: Metamon convention applies the RNG roll last (to the accumulated float), whereas
+Showdown applies it to the integer base first, then each multiplier with `pokeRound` floors.
+This is acceptable for RL feature extraction (consistent signal; the policy learns the bias).
+Do not change the formula to match Showdown — the added complexity is not worth 2-4 HP gain.
 
 ### SetPredictor: current distribution only, no memory between battles
 Each `SetPredictor` is created fresh at the start of each opponent encounter
@@ -231,6 +281,25 @@ was always 1.0. Caught by unit tests `test_supereffective_doubles` and `test_not
   never fired.
 
 Fix: added `_INITIAL_FORME` class dict mapping species to correct starting forme.
+
+### D5 – Weather type comparison was case-sensitive (move types arrive uppercase)
+`DamageCalculator.calculate()` compared `move.move_type == "Water"` and `move.move_type == "Fire"`,
+but poke-env passes type names as uppercase strings ("WATER", "FIRE"). The rain/sun weather
+multipliers were never applied: rain-boosted Water and sun-boosted Fire had the same value as neutral.
+
+Fix: normalized all weather and ability-type comparisons to `.upper()` in `calculate()`.
+Caught by `validate_damage.py` scenario 9 (Rain-weakened Fire, Δ=49 HP before fix, Δ=2.5 after).
+
+### D5 – STAB / ability-type comparisons now consistently uppercase-normalized
+`_stab()` already used `.upper()`. Fixed weather and ability-type boost comparisons to match.
+All type comparisons in `DamageCalculator` and `_stab()` are now case-insensitive.
+
+### D3 – features.py audit fixes (2026-04-22)
+- `HAZARD_REMOVAL_MOVES`: `"mortalspinstrike"` → `"mortalspin"` (wrong Showdown ID).
+- `SETUP_MOVES`: `"coilingcurse"` → `"coil"`, removed dead entry `"victory dance"`.
+- `WEATHER_MAP`: added `"DELTASTREAM"` → `"none"` (was missing, caused KeyError in weather feature).
+- Trick Room turns-remaining: activation turn defaulted to 0 instead of the actual activation turn.
+  Fixed to `next(iter(battle.field_effects.get(effect, {}).keys()), battle.turn)`.
 
 ### D1 – pkmn.cc returns 403 for Python-urllib User-Agent
 `urllib.request` sends `User-Agent: Python-urllib/3.12` which pkmn.cc rejects (HTTP 403).

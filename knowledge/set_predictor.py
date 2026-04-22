@@ -61,15 +61,25 @@ class SetPredictor:
         """
         P(attr = value | role) for each role. Matched by Showdown ID comparison.
         Returns 0.0 for roles that don't have this attribute at all.
+
+        Logs a debug warning if value_id appears in zero roles (genuinely unknown
+        attribute, not just inconsistent with prior observations).
         """
         likelihoods = {}
+        any_role_has_it = False
         for role_name, role_data in self._roles.items():
             freq = 0.0
             for key, f in role_data.get(attr, {}).items():
                 if to_id(key) == value_id:
                     freq = float(f)
+                    any_role_has_it = True
                     break
             likelihoods[role_name] = freq
+        if not any_role_has_it:
+            logger.debug(
+                "SetPredictor(%s): %s=%r not found in any role's %s data — may be wrong ID",
+                self.species, attr, value_id, attr,
+            )
         return likelihoods
 
     def _update(self, likelihoods: dict[str, float]) -> None:

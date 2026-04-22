@@ -70,14 +70,21 @@ def _print_turn_diagnostic(battle, extractor: BattleFeatureExtractor, vec: np.nd
             parts = ", ".join(f"{role}={prob:.1%}" for role, _, prob in dist)
             print(f"         opp roles: [{parts}]")
 
-    # Key feature values from the vector
-    # Own active slot is slot 0 (sorted: active first)
-    # We report: hp (idx 1), item probs (idx 46-53), expected damage norm (idx 54)
-    slot0_start = 0
-    hp_feat = vec[slot0_start + 1]
-    item_probs = vec[slot0_start + 46: slot0_start + 54]
-    dmg_norm = vec[slot0_start + 54]
-    print(f"         own[0]: hp_feat={hp_feat:.2f}, best_move_dmg={dmg_norm*200:.0f}bp-equiv")
+    # Key feature values from the vector (new layout: POKEMON_FEATURES=77)
+    # [0] species_idx, [1] hp, [2] is_active, [3:10] status, [10:17] boosts,
+    # [17:23] base_stats, [23] speed, [24:42] type_probs, [42:47] func_probs,
+    # [47:55] item_probs, [55] dmg_norm, [56] tera_avail, [57:75] tera_dist,
+    # [75] times_active, [76] is_revealed
+    # Own active Pokemon is whichever slot has is_active=1.0
+    active_slot = 0
+    for s in range(6):
+        if vec[s * 77 + 2] > 0.5:
+            active_slot = s
+            break
+    slot_start = active_slot * 77
+    hp_feat = vec[slot_start + 1]
+    dmg_norm = vec[slot_start + 55]
+    print(f"         own[{active_slot}]: hp_feat={hp_feat:.2f}, dmg_frac_opp_hp={dmg_norm:.3f}")
 
     # Vector validity
     has_nan = np.any(np.isnan(vec))
@@ -210,7 +217,7 @@ async def run_integration_test(n_battles: int = 10):
     print(f"  Turns processed: {total_turns}")
     print(f"  Wall time: {elapsed:.1f}s")
     print()
-    print(f"  Feature vector shape (947) OK: {total_turns - len(shape_failures)}/{total_turns}")
+    print(f"  Feature vector shape ({FEATURE_DIM}) OK: {total_turns - len(shape_failures)}/{total_turns}")
     print(f"  NaN turns:    {len(nan_turns)}")
     print(f"  Inf turns:    {len(inf_turns)}")
     print(f"  Slow turns (>50ms): {len(slow_turns)}")
