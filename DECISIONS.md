@@ -341,3 +341,156 @@ python scripts/integration_test_phase2.py
   Call `.reset()` at the start of each new battle.
 - `SetPredictor.observe_move()` receives Showdown IDs (lowercase, no special chars).
   poke-env's `move.id` is already in this format.
+
+---
+
+# Phase 3 Decisions
+
+## Summary
+
+Phase 3 implements the Replay Ingestion Pipeline: six deliverables under
+`replay_ingestion/` that convert raw Showdown replays to training-ready
+trajectory `.npz` files.
+
+| Deliverable | Status | Key metric |
+|-------------|--------|-----------|
+| D1 – scraper.py | PASS | 100 replays, 0 errors, 1901–2343 rating |
+| D2 – parser.py | PASS | 100/100 winner detection, all Gen 9 events handled |
+| D3 – reconstruct.py | PASS | 100.0% consistency on all 5 checks (HP, status, active, weather, turn-order) |
+| D4 – trajectory.py | PASS | 5450 turns, 0 NaN/Inf, 95.9% valid actions, 959-dim vectors |
+| D5 – validate_reconstruction.py | PASS | 100% consistency across all checks |
+| D6 – dataset_report.md | PASS | Written to data/dataset_report.md |
+
+## Architecture Choices
+
+### Parser (D2): single-pass event processing
+
+All events processed in one forward pass of the replay log.  `TurnSnapshot`
+objects are created at each `|turn|N` boundary by cloning live state.  No
+backtracking needed except for the Illusion reveal, which sets
+`slot.illusion_entry_species` and defers species correction to `detailschange`.
+
+HP is stored as exact integers (current/max) from the log — not percentages,
+even though the "HP Percentage Mod" rule is active.  `hp_fraction = current / max`.
+
+Unknown events are counted silently in `ParsedBattle.unknown_event_counts`;
+the parser never raises on unknown events.
+
+### Reconstruction (D3): masked opponent slots
+
+`reconstruct.py` produces `ReconstructedView` objects with:
+- `own_slots`: full visibility (complete HP, status, boosts, moves, items, etc.)
+- `opp_slots`: only what was publicly visible (parser already filters to revealed info)
+
+Non-revealed opponent slots → empty placeholder (`species=""`, `revealed=False`).
+Species resolution: `slot.forme` (set on forme changes, Illusion reveal, Transform)
+is promoted to `slot.species` and cleared so downstream code only reads `slot.species`.
+
+No future-information leakage: all masking is based on events already processed
+at the time of each turn's snapshot.
+
+### Trajectory (D4): action encoding and legality mask
+
+**Action space (13 slots)**:
+- 0-3: moves sorted alphabetically by Showdown ID (across ALL moves used in battle)
+- 4-8: switches sorted alphabetically by species ID (non-fainted, non-active, known)
+- 9-12: tera + move (same move ordering; legal only if `own_can_tera=True`)
+- -1: unresolvable (`cant` events, last turn, force-switch timing issue)
+
+**Final-moveset ordering**: Action indices 0-3 use the FINAL known moveset
+(all moves seen across the entire battle), not just moves revealed so far.
+This ensures consistent encoding across all turns.  Feature vectors still
+only encode moves seen up to the current turn (no leakage into feature values).
+
+**Unrevealed own Pokemon in switches**: `_available_switches()` includes Pokemon
+from `own_slot_order` (precomputed from all turns) even if not yet in the snapshot.
+The player knows their full team; unrevealed own Pokemon are treated as healthy
+until the log proves otherwise.
+
+**BattleFeatureExtractor compatibility**: synthetic duck-typed objects (`FakeEnum`,
+`SynthMove`, `SynthPokemon`, `SynthBattle`) satisfy every attribute access the
+extractor makes.  Real poke-env enum classes are NOT imported — only `GenData`
+for move/species lookup.
+
+**Stable own-slot order**: `extractor._own_slot_order` is pre-seeded with the
+full battle's reveal order before the first `extract()` call.  Unrevealed slots
+remain zero-filled in the feature vector (no future leakage).
+
+## Bugs Found and Fixed
+
+### D4 – `field` attribute name in TurnSnapshot shadows `dataclasses.field()`
+
+`TurnSnapshot` had `field: FieldState = field(default_factory=FieldState)`.
+Python class bodies share namespace: after `field = <Field object>` was assigned,
+subsequent `field(...)` calls tried to invoke the Field object → `TypeError`.
+Fix: renamed attribute to `field_state` throughout parser, reconstruct, trajectory.
+
+### D4 – Switch actions for first-time Pokemon encoded as -1
+
+When a player switches in a Pokemon for the first time, the snapshot at that
+turn's start doesn't include that Pokemon in `own_slots` yet.  `_encode_action`
+searched `view.own_slots` and couldn't find the target → returned -1.
+
+Root cause: the own team builds up one switch at a time in the log, but the
+player knows their full team from turn 1.
+
+Fix: `_available_switches()` now computes the union of:
+1. Currently revealed (non-fainted, non-active) own slots from the snapshot
+2. Pokemon in `own_slot_order` not yet in the snapshot (first-time switch targets)
+
+Valid action rate improved from 84.3% → 95.9%.
+
+## Known Limitations
+
+### Action = -1 (4.1% of turns)
+
+Remaining -1 actions break down as:
+- **`cant` events**: player chose a move but was blocked (sleep, paralysis, recharge).
+  The parser's `|cant|` handler doesn't record an action.  These are excluded from
+  policy loss during training.
+- **Force-switch timing**: Showdown sometimes places a faint + forced switch within
+  the same turn's events (before `|turn|N+1|`).  The parser records the switch action
+  in the CURRENT turn's snapshot correctly, but also sets `force_switch_p1/p2=True`
+  on the NEXT turn's snapshot.  Turns marked as force-switch but with -1 action
+  indicate the switch already resolved in the prior turn.
+- **Last turn of game**: no action is recorded after `|win|`.
+
+### 2-4 HP systematic overestimate in damage_calc.py
+
+Documented in Phase 2.  Metamon applies the RNG roll last (to float); Showdown
+applies it first (to integer with `pokeRound` floors).  Results in 2-4 HP
+over-estimate in all damage scenarios.  **Potential Phase 8 MCTS suspect**: MCTS
+rollout evaluations using the damage calculator may over-estimate damage by 2-5%,
+which could bias action selection in one-hit-KO situations.  Monitor if MCTS win rate
+is unexpectedly low on KO-threshold situations.
+
+### Team preview not in replay log
+
+Random Battle team preview is private (not in the replay log).  Own team builds
+up via revealed switches.  On turn 1, the feature extractor's own-slot features
+for unrevealed Pokemon are zero-filled.
+
+## Resume Instructions (Phase 3)
+
+Phase 3 is complete. To re-run the pipeline:
+```bash
+source /home/user/metamon-env/bin/activate
+cd /home/user/showdown-bot
+
+# Scrape 100 replays (skip if data/raw_replays/ already populated)
+python3 scripts/run_scraper.py --max 100
+
+# Run parse + reconstruct + trajectory on all scraped replays
+python3 scripts/run_pipeline.py --max 100
+
+# Validate reconstruction consistency (D5)
+python3 scripts/validate_reconstruction.py
+
+# Generate dataset report (D6)
+python3 scripts/generate_dataset_report.py
+```
+
+Expected output:
+- `data/raw_replays/gen9randombattle/` — 100 .json + .log files
+- `data/trajectories/gen9randombattle/` — 200 .npz files (2 per replay)
+- `data/dataset_report.md` — summary report
