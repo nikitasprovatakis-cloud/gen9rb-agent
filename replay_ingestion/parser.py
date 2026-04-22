@@ -140,6 +140,9 @@ class TurnSnapshot:
     p1_force_switch: bool = False  # this turn is a force-switch for p1
     p2_force_switch: bool = False
 
+    p1_cant: bool = False  # p1 was prevented from acting (|cant| event)
+    p2_cant: bool = False
+
     # Action taken during this turn (populated during event processing)
     p1_action: Optional[ActionRecord] = None
     p2_action: Optional[ActionRecord] = None
@@ -434,7 +437,10 @@ class Gen9Parser:
                 if not args:
                     continue
                 player, nick = _parse_player_nick(args[0])
-                # No state change needed beyond tracking "no action"
+                if player == 1:
+                    current_snap.p1_cant = True
+                else:
+                    current_snap.p2_cant = True
 
             # ── damage / heal / sethp ─────────────────────────────────────────
             elif event == "-damage":

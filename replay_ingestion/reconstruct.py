@@ -66,6 +66,7 @@ class ReconstructedView:
 
     own_can_tera: bool
     is_force_switch: bool
+    own_cant: bool    # player was prevented from acting this turn (|cant| event)
 
     action: Optional[ActionRecord]
 
@@ -138,6 +139,7 @@ def _build_view(
         opp_side        = snap.p2_side
         own_can_tera    = snap.p1_can_tera
         is_force_switch = snap.p1_force_switch
+        own_cant        = snap.p1_cant
         action          = snap.p1_action
         own_team_size   = snap.p1_team_size
         opp_team_size   = snap.p2_team_size
@@ -150,6 +152,7 @@ def _build_view(
         opp_side        = snap.p1_side
         own_can_tera    = snap.p2_can_tera
         is_force_switch = snap.p2_force_switch
+        own_cant        = snap.p2_cant
         action          = snap.p2_action
         own_team_size   = snap.p2_team_size
         opp_team_size   = snap.p1_team_size
@@ -170,6 +173,7 @@ def _build_view(
         opp_side=opp_side.clone(),
         own_can_tera=own_can_tera,
         is_force_switch=is_force_switch,
+        own_cant=own_cant,
         action=action,
         own_team_size=own_team_size,
         opp_team_size=opp_team_size,

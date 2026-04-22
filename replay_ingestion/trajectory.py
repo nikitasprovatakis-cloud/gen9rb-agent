@@ -633,11 +633,15 @@ class TrajectoryBuilder:
         self._extractor.reset()
         self._extractor._own_slot_order = own_order  # pre-seed before first extract
 
+        _STRUGGLE_ID = "struggle"
+
         n = len(views)
         states = np.zeros((n, FEATURE_DIM), dtype=np.float32)
         actions = np.full(n, -1, dtype=np.int16)
         legal_masks = np.zeros((n, 13), dtype=bool)
         force_switches = np.zeros(n, dtype=bool)
+        filter_for_training = np.zeros(n, dtype=bool)
+        parse_failure = np.zeros(n, dtype=bool)
 
         for t, view in enumerate(views):
             try:
@@ -659,12 +663,34 @@ class TrajectoryBuilder:
 
             force_switches[t] = view.is_force_switch
 
+            # --- Filter flag ---
+            # filter_for_training=True for any turn that should be excluded from
+            # policy loss.  Subcategories:
+            #   last_turn  — no action recorded after |win|
+            #   cant       — sleep/paralysis/recharge prevented choice (own_cant flag)
+            #   struggle   — player had no PP; Struggle excluded from action space
+            #   force_sw_timing — force-switch timing artefact
+            #   parse_failure — action truly unknown (none of the above; flag separately)
+            if actions[t] == -1:
+                filter_for_training[t] = True
+                is_last = (t == n - 1)
+                is_cant = view.own_cant
+                is_struggle = (
+                    view.action is not None
+                    and to_id(view.action.name) == _STRUGGLE_ID
+                )
+                is_force_sw = view.is_force_switch and view.action is None
+                if not (is_last or is_cant or is_struggle or is_force_sw):
+                    parse_failure[t] = True
+
         winner_val = winner if winner in (1, 2) else -1
         return {
             "states": states,
             "actions": actions,
             "legal_masks": legal_masks,
             "force_switch": force_switches,
+            "filter_for_training": filter_for_training,
+            "parse_failure": parse_failure,
             "winner": np.array([winner_val], dtype=np.int8),
             "player": np.array([player], dtype=np.int8),
         }
