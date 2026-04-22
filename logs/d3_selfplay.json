@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-04-22T17:32:42.359249Z",
+  "deliverable": "d3_selfplay",
+  "format": "gen9randombattle",
+  "checkpoint": "SmallRLGen9Beta",
+  "attention": "VanillaAttention",
+  "n_battles_per_player": 1,
+  "wall_clock_s": 27.9,
+  "player_results": [
+    {
+      "username": "MetaPlayer1",
+      "status": "ok",
+      "results": {
+        "Average Total Return in psladder_MetaPlayer1": 100.0442354157567,
+        "Average Total Return (Across All Env Names)": 100.0442354157567,
+        "Average Win Rate in psladder_MetaPlayer1": 1.0,
+        "Average Valid Actions in psladder_MetaPlayer1": 1.0,
+        "Bottom Quintile Total Return in psladder_MetaPlayer1": 100.0442354157567
+      },
+      "elapsed_s": 21.2
+    },
+    {
+      "username": "MetaPlayer2",
+      "status": "ok",
+      "results": {
+        "Average Total Return in psladder_MetaPlayer2": -109.36999869346619,
+        "Average Total Return (Across All Env Names)": -109.36999869346619,
+        "Average Win Rate in psladder_MetaPlayer2": 0.0,
+        "Average Valid Actions in psladder_MetaPlayer2": 1.0,
+        "Bottom Quintile Total Return in psladder_MetaPlayer2": -109.36999869346619
+      },
+      "elapsed_s": 17.6
+    }
+  ]
+}
