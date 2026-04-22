@@ -162,3 +162,113 @@ Expected output: `PHASE 1 OK — MaxDamageBot N/10 wins vs RandomPlayer`
   `torch.compile` to work. This is a one-time system install.
 - The **metamon submodule** `server/pokemon-showdown` is an empty SSH clone; it is symlinked
   to the local Showdown checkout. Do not `git submodule update` inside metamon.
+
+---
+
+# Phase 2 Decisions
+
+## Summary
+
+Phase 2 implements the Knowledge Layer: five standalone Python modules under `knowledge/`
+plus a D6 integration test. All six deliverables pass acceptance criteria.
+
+| Deliverable | Status | Key metric |
+|-------------|--------|-----------|
+| D1 – set_pool.py | PASS | 508 species loaded, 7-day TTL cache, `to_id()` normalization |
+| D2 – set_predictor.py | PASS | Bayesian update over role distribution, `observe_*` API |
+| D3 – features.py | PASS | FEATURE_DIM=947, (912 per-Pokemon + 35 global), float32, no NaN/Inf |
+| D4 – formes.py | PASS | Palafin/Minior/Morpeko/Terapagos/Cramorant transitions |
+| D5 – damage_calc.py | PASS | Metamon formula extended with items/abilities, 65/65 unit tests pass |
+| D6 – integration test | PASS | 10/10 battles, 515 turns, mean 1.0ms extraction, max 2.4ms |
+
+## Architecture Choices
+
+### FEATURE_DIM = 947
+76 features × 12 Pokemon + 35 global. Layout frozen here for Phase 3 neural net input.
+Per-Pokemon: species_idx, hp, status(7), boosts(7), base_stats(6), speed_tier,
+             type_move_probs(18), functional_probs(5), item_probs(8), expected_damage,
+             tera_available, tera_type_dist(18), times_active, is_revealed.
+Global: weather(5), terrain(5), trick_room(2), hazards×2(8), screens×2(12), turn, remaining×2.
+
+### Damage calculator: Metamon's formula extended
+The three candidate approaches from the brief were: Metamon's, poke-env's, @smogon/calc.
+- poke-env has no damage formula.
+- @smogon/calc is TypeScript; bridging via Node adds runtime complexity.
+- Metamon's `damage_equation` in `baselines/base.py` covers ~90% of cases and is
+  already in our dependency tree.
+We extended it with Life Orb, Choice Band/Specs, Expert Belt, Expert Belt,
+Muscle Band, Wise Glasses, Huge Power/Pure Power, Adaptability, Technician,
+Tinted Lens, Transistor, Dragon's Maw, Sand/Snow defensive boosts.
+
+### SetPredictor: current distribution only, no memory between battles
+Each `SetPredictor` is created fresh at the start of each opponent encounter
+(via `BattleFeatureExtractor.reset()`). This is intentional: prior beliefs
+from one battle should not contaminate a new random matchup.
+
+### FormeTracker: current-forme stats, not probability-weighted
+Storing the current forme's stats directly keeps the feature vector deterministic.
+The network can learn transition dynamics from training sequences.
+
+## Bugs Found and Fixed
+
+### D5 – Type chart key order and casing in damage_calc.py
+`_type_effectiveness()` was looking up `type_chart.get(dtype, {}).get(move_type, 1.0)`,
+but `_type_chart` is structured as `{attacking_type: {defending_type: mult}}` with
+ALL CAPS keys from poke-env's `GenData`. The lookup was doing key order and casing wrong,
+returning 1.0 (neutral) for all type matchups.
+
+Fix: normalize both keys to uppercase and swap order:
+`type_chart.get(move_type.upper(), {}).get(dtype.upper(), 1.0)`
+
+This was silent: STAB tests passed, damage values looked plausible, but type effectiveness
+was always 1.0. Caught by unit tests `test_supereffective_doubles` and `test_not_very_effective_halves`.
+
+### D4 – FormeTracker initial forme for Palafin and Minior
+`FormeTracker.__init__` set `_current_forme = species_id`, which is `"palafin"` (not
+`"palafin-zero"`) and `"minior"` (not `"minior-meteor"`). Consequences:
+- Palafin: `effective_base_stats` returned `None` (key `"palafin"` missing from FORME_BASE_STATS).
+- Minior: `on_damage_taken` checked `"meteor" in "minior"` → False, so the Core transition
+  never fired.
+
+Fix: added `_INITIAL_FORME` class dict mapping species to correct starting forme.
+
+### D1 – pkmn.cc returns 403 for Python-urllib User-Agent
+`urllib.request` sends `User-Agent: Python-urllib/3.12` which pkmn.cc rejects (HTTP 403).
+`curl -A "Mozilla/5.0 ..."` works fine.
+Fix: added `User-Agent: Mozilla/5.0 (compatible; pokemon-showdown-bot/1.0)` to the Request
+headers in `set_pool._fetch_json()`.
+Data was pre-populated by running `curl -sL -A "Mozilla/5.0 ..." <url>` manually.
+
+## Unit Tests
+
+65 tests in `tests/test_knowledge.py`. All pass. Covers:
+- `to_id()` normalization (6 cases)
+- `resolve_species()` / `get_species_data()` (7 cases, require live cache)
+- `SetPredictor` Bayesian updating (7 cases)
+- `FormeTracker` for Palafin, Minior, Morpeko; `FormeManager` (13 cases)
+- `DamageCalculator` core formula, STAB, type effectiveness, items (Life Orb,
+  Choice Band), abilities (Huge Power, Burn, Technician), weather, mean mode (22 cases)
+
+## Resume Instructions (Phase 2)
+
+Phase 2 is complete. To verify:
+```bash
+source /path/to/metamon-env/bin/activate
+cd /home/user/showdown-bot
+
+# Unit tests (no server needed)
+python -m pytest tests/test_knowledge.py -v
+
+# Integration test (requires Showdown server on port 8000)
+node /path/to/pokemon-showdown start --no-security &
+python scripts/integration_test_phase2.py
+```
+
+## Gotchas
+
+- `randbats` cache at `$METAMON_CACHE_DIR/randbats/gen9randombattle_stats.json` must exist.
+  Populated on first run (or manually via curl as above). TTL = 7 days.
+- `BattleFeatureExtractor` must be instantiated once per session, not per battle.
+  Call `.reset()` at the start of each new battle.
+- `SetPredictor.observe_move()` receives Showdown IDs (lowercase, no special chars).
+  poke-env's `move.id` is already in this format.
