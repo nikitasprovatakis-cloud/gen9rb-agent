@@ -1,6 +1,6 @@
 # Dataset Report — Gen 9 Random Battle
 
-Generated: 2026-04-22 19:52 UTC
+Generated: 2026-04-22 20:24 UTC
 
 ## Replay Collection (D1)
 
@@ -22,27 +22,27 @@ Generated: 2026-04-22 19:52 UTC
 | P2 POV files | 100 |
 | Total turns (both POVs) | 5,450 |
 | Avg turns per POV | 27.2 |
-| Valid action labels (≥0) | 5,225 (95.9%) |
-| Invalid action labels (-1) | 225 (4.1%) |
+| Valid action labels (≥0) | 5,244 (96.2%) |
+| Invalid action labels (-1) | 206 (3.8%) |
 | Files with NaN/Inf | 0 |
 | Avg legal actions per turn | 6.9 / 13 |
 | Feature vector dimension | 959 |
 
 ## Action Distribution
 
-Based on 5,225 valid action labels.
+Based on 5,244 valid action labels.
 
 | Slot | Type | Count | % |
 |------|------|-------|---|
-| 0 | Move 0 (alphabetical rank 1) | 1,868 | 35.8% |
-| 1 | Move 1 (alphabetical rank 2) | 1,195 | 22.9% |
+| 0 | Move 0 (alphabetical rank 1) | 1,868 | 35.6% |
+| 1 | Move 1 (alphabetical rank 2) | 1,195 | 22.8% |
 | 2 | Move 2 (alphabetical rank 3) | 644 | 12.3% |
-| 3 | Move 3 (alphabetical rank 4) | 207 | 4.0% |
+| 3 | Move 3 (alphabetical rank 4) | 220 | 4.2% |
 | 4 | Switch 0 (alphabetical rank 1) | 404 | 7.7% |
-| 5 | Switch 1 (alphabetical rank 2) | 296 | 5.7% |
-| 6 | Switch 2 (alphabetical rank 3) | 253 | 4.8% |
-| 7 | Switch 3 (alphabetical rank 4) | 143 | 2.7% |
-| 8 | Switch 4 (alphabetical rank 5) | 78 | 1.5% |
+| 5 | Switch 1 (alphabetical rank 2) | 296 | 5.6% |
+| 6 | Switch 2 (alphabetical rank 3) | 256 | 4.9% |
+| 7 | Switch 3 (alphabetical rank 4) | 147 | 2.8% |
+| 8 | Switch 4 (alphabetical rank 5) | 77 | 1.5% |
 | 9 | Tera + Move 0 | 71 | 1.4% |
 | 10 | Tera + Move 1 | 38 | 0.7% |
 | 11 | Tera + Move 2 | 26 | 0.5% |

@@ -470,9 +470,94 @@ Random Battle team preview is private (not in the replay log).  Own team builds
 up via revealed switches.  On turn 1, the feature extractor's own-slot features
 for unrevealed Pokemon are zero-filled.
 
+## Post-Delivery Bug Fixes (2026-04-22)
+
+Two bugs discovered during validation-gap audit and fixed before production scaling:
+
+### Bug 1 — Struggle in move_orders shifts real moves out of range
+
+**Symptom:** 17 invalid actions in one replay (gen9randombattle-2591230892) where
+Sylveon used Struggle (ran out of PP). Struggle was added to `_compute_move_orders`,
+making Sylveon's move list 5 entries. Alphabetically Struggle sorts before Wish,
+pushing Wish to index 4 (beyond the 0-3 slot limit) → action = -1.
+
+**Fix:** Filter `"struggle"` in `_compute_move_orders`. Struggle is automatic (no
+player choice) and must never occupy a slot index.
+
+### Bug 2 — Minior forme change duplicates own_slot_order entry
+
+**Symptom:** 3 invalid switches in 3 replays. When Minior transforms from Meteor form
+to Core form (e.g., miniormeteor → minioryellow), both species IDs were added to
+`_compute_own_slot_order`, inflating the team to 7 entries. With 7 pseudo-entries
+(one slot = active), `_available_switches` produced 6 candidates — one more than the
+5-slot limit (indices 4-8). The 6th switch target → index 5 → `4+5=9` → clamped to
+-1 by the `idx > 4` guard.
+
+**Fix:** Track `own_slot_order` by **nickname** (not species ID). If a nickname was
+already recorded (forme change), skip the new species ID — same Pokemon, same slot.
+
+**Net improvement:** 20 bug-caused invalid actions fixed (p1 + p2 combined ≈ 40).
+Valid action rate: 95.9% → 96.2%.
+
+### Remaining invalid actions (3.8%) — all expected
+
+| Category | P1 count | Root cause |
+|----------|----------|------------|
+| last_turn | 38 | No action recorded after `\|win\|` |
+| cant | 44 | Sleep / paralysis / recharge — player had no choice |
+| force_switch | 6 | Force-switch timing: flag set previous turn |
+| other | 5 | 3 parser failures (p1_action=None), 2 Struggle turns |
+
+These are masked out of policy loss during training (action=-1 filter).
+
+## Illusion Coverage Gap — Documented, Code Tested Synthetically
+
+The 100-replay smoke-test dataset contains zero actual `|-end|...|Illusion` events.
+One replay has Zoroark in the team (gen9randombattle-2591001758) but it was never
+switched in. The Illusion reconstruction code path was untested against live data.
+
+**Resolution:** Synthetic unit test added in `tests/test_replay_ingestion.py`
+(`TestIllusionBreak`). Three tests exercise:
+- `test_illusion_true_species_revealed`: p2 own_slots shows Zoroark after break
+- `test_illusion_entry_species_recorded`: parser snapshot records `illusion_entry_species=Gengar`
+- `test_opponent_sees_zoroark_after_break`: p1 opp_slots shows Zoroark after break
+
+All 7 unit tests (including Struggle exclusion and Minior forme deduplication) pass.
+
+**Note:** Imposter Ditto IS tested against live data (gen9randombattle-2591189018,
+two `-transform` events). Reconstruction correctly updates Ditto's species to the
+target (Brambleghast, then Tentacruel).
+
+## D5 Full-Vector Validation
+
+`scripts/validate_features.py` implements full 959-dim range checks:
+- Own slots [0-5]: species_idx in [0,508]; hp in [0,1]; status/move-type/item/tera
+  features are binary {0,1}; boosts in [-1,1]; base stats/255 in [0,1]
+- Opp slots [6-11]: same scalar bounds but move-type/flag/item/tera features are
+  **continuous [0,1]** probabilities from SetPredictor (not binary)
+- Global [924-958]: weather/terrain one-hot sums=1; hazard/screen/remaining all [0,1]
+- Opponent-slot leakage: unrevealed slots must have species_idx=0 and hp=0
+- Slot ordering stability: own species_idx must not change once non-zero
+
+Result on 200 files / 5,450 turns: **PASS** — zero range errors, zero leakage,
+zero stability violations, zero turns with empty legal mask.
+
+## D3 Expanded Leakage Audit (20 Replays, Turns ≥20)
+
+20 randomly sampled replays (seed=99) examined for information-leakage at turns≥20.
+194 late-game turns checked.
+
+Findings:
+- 0 unrevealed-slot HP leakage
+- 0 unrevealed-slot move leakage
+- 0 unrevealed-slot status leakage
+- 12 "same species in both teams" flags — all from Ditto Imposter replay; Ditto's
+  species is correctly set to the transform target (Brambleghast / Tentacruel), which
+  happens to match the active opponent. Not a leakage bug.
+
 ## Resume Instructions (Phase 3)
 
-Phase 3 is complete. To re-run the pipeline:
+Phase 3 validation is complete. To re-run the pipeline:
 ```bash
 source /home/user/metamon-env/bin/activate
 cd /home/user/showdown-bot
@@ -483,11 +568,17 @@ python3 scripts/run_scraper.py --max 100
 # Run parse + reconstruct + trajectory on all scraped replays
 python3 scripts/run_pipeline.py --max 100
 
-# Validate reconstruction consistency (D5)
+# Validate reconstruction consistency (D5 basic)
 python3 scripts/validate_reconstruction.py
+
+# Validate full 959-dim feature vector (D5 extended)
+python3 scripts/validate_features.py
 
 # Generate dataset report (D6)
 python3 scripts/generate_dataset_report.py
+
+# Run unit tests
+python -m pytest tests/test_replay_ingestion.py -v
 ```
 
 Expected output:

@@ -412,23 +412,34 @@ def _compute_own_slot_order(views: list[ReconstructedView]) -> list[str]:
     by scanning all turns of a battle.  Includes all 6 (or fewer) Pokemon
     that appeared during the battle, including those first revealed via a
     switch/drag action on the final turn.
+
+    Tracks by nickname to avoid double-counting Pokemon that change forme
+    mid-battle (e.g. Minior-Meteor → Minior-Yellow).  Only the first-seen
+    species ID for each nickname is recorded.
     """
-    seen: set[str] = set()
+    seen_nicks: set[str] = set()
+    seen_sids: set[str] = set()
     order: list[str] = []
     for view in views:
         for slot in view.own_slots:
-            if slot.species:
+            if slot.species and slot.nickname:
+                nick = slot.nickname
                 sid = to_id(slot.species)
-                if sid not in seen:
-                    seen.add(sid)
-                    order.append(sid)
+                if nick not in seen_nicks:
+                    seen_nicks.add(nick)
+                    if sid not in seen_sids:
+                        seen_sids.add(sid)
+                        order.append(sid)
         # Also capture species first revealed via action (switch/drag to new Pokemon)
         action = view.action
-        if action and action.action_type in ("switch", "drag") and action.name:
+        if action and action.action_type in ("switch", "drag") and action.name and action.nickname:
+            nick = action.nickname
             sid = to_id(action.name)
-            if sid not in seen:
-                seen.add(sid)
-                order.append(sid)
+            if nick not in seen_nicks:
+                seen_nicks.add(nick)
+                if sid not in seen_sids:
+                    seen_sids.add(sid)
+                    order.append(sid)
     return order
 
 
@@ -445,6 +456,10 @@ def _compute_move_orders(views: list[ReconstructedView]) -> dict[str, list[str]]
     This gives consistent 0-3 action indices regardless of when in the battle
     a move was first used.
     """
+    # Struggle is automatic (no PP) — exclude it from the action space so it
+    # never shifts real moves out of the 0-3 index range.
+    _EXCLUDED_MOVES = {"struggle"}
+
     moves_per_nick: dict[str, set] = {}
 
     for view in views:
@@ -455,15 +470,19 @@ def _compute_move_orders(views: list[ReconstructedView]) -> dict[str, list[str]]
                 if nick not in moves_per_nick:
                     moves_per_nick[nick] = set()
                 for m in slot.moves_used:
-                    moves_per_nick[nick].add(to_id(m))
+                    mid = to_id(m)
+                    if mid not in _EXCLUDED_MOVES:
+                        moves_per_nick[nick].add(mid)
 
         # Also capture this turn's action move (not yet in moves_used)
         action = view.action
         if action and action.action_type == "move":
-            nick = view.own_active_nick
-            if nick not in moves_per_nick:
-                moves_per_nick[nick] = set()
-            moves_per_nick[nick].add(to_id(action.name))
+            mid = to_id(action.name)
+            if mid not in _EXCLUDED_MOVES:
+                nick = view.own_active_nick
+                if nick not in moves_per_nick:
+                    moves_per_nick[nick] = set()
+                moves_per_nick[nick].add(mid)
 
     return {nick: sorted(moves) for nick, moves in moves_per_nick.items()}
 
