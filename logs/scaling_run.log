@@ -1,0 +1,68 @@
+2026-04-22 23:44:29,742 [INFO] =================================================================
+2026-04-22 23:44:29,743 [INFO] Scaling run started. Target: 10000 replays. Continue=False
+2026-04-22 23:44:29,743 [INFO] Existing replays: 208
+2026-04-22 23:44:29,761 [INFO] Scraping: have 208 replays, target 10000, need 9792 more.
+2026-04-22 23:47:33,279 [INFO] PROGRESS: 100 replays downloaded | +215 exist | 0 errors | 36.0/min | illusion_team=0 illusion_break=0
+2026-04-22 23:49:34,299 [INFO] Empty page 101 — search exhausted.
+2026-04-22 23:49:34,300 [INFO] Scrape done: {'downloaded': 175, 'skipped_exists': 218, 'skipped_rating': 4707, 'skipped_date': 0, 'skipped_private': 0, 'errors': 0, 'pages_fetched': 101, 'illusion_team': 1, 'illusion_break': 1}
+2026-04-22 23:49:34,320 [INFO] Processing 175 new replays through pipeline…
+2026-04-22 23:49:34,554 [WARNING] SetPredictor(Sneasler): observation eliminated all roles — keeping prior
+2026-04-22 23:49:35,105 [WARNING] SetPredictor(Rotom): observation eliminated all roles — keeping prior
+2026-04-22 23:49:35,111 [WARNING] SetPredictor(Ariados): observation eliminated all roles — keeping prior
+2026-04-22 23:49:35,627 [WARNING] SetPredictor(Gardevoir): observation eliminated all roles — keeping prior
+2026-04-22 23:49:39,606 [WARNING] SetPredictor(Annihilape): observation eliminated all roles — keeping prior
+2026-04-22 23:49:39,791 [WARNING] SetPredictor(Mamoswine): observation eliminated all roles — keeping prior
+2026-04-22 23:49:40,026 [WARNING] SetPredictor(Whimsicott): observation eliminated all roles — keeping prior
+2026-04-22 23:49:40,105 [WARNING] SetPredictor(Zacian): observation eliminated all roles — keeping prior
+2026-04-22 23:49:40,757 [WARNING] SetPredictor(Hatterene): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,240 [WARNING] SetPredictor(Breloom): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,241 [WARNING] SetPredictor(Breloom): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,303 [WARNING] SetPredictor(Hatterene): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,530 [WARNING] SetPredictor(Dedenne): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,536 [WARNING] SetPredictor(Cramorant): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,568 [WARNING] SetPredictor(Drednaw): observation eliminated all roles — keeping prior
+2026-04-22 23:49:41,850 [WARNING] SetPredictor(Perrserker): observation eliminated all roles — keeping prior
+2026-04-22 23:49:42,015 [WARNING] SetPredictor(Espeon): observation eliminated all roles — keeping prior
+2026-04-22 23:49:42,130 [WARNING] SetPredictor(Inteleon): observation eliminated all roles — keeping prior
+2026-04-22 23:49:42,132 [WARNING] SetPredictor(Meganium): observation eliminated all roles — keeping prior
+2026-04-22 23:49:42,933 [WARNING] SetPredictor(Espeon): observation eliminated all roles — keeping prior
+2026-04-22 23:49:44,479 [WARNING] SetPredictor(Mismagius): observation eliminated all roles — keeping prior
+2026-04-22 23:49:44,495 [WARNING] SetPredictor(Blissey): observation eliminated all roles — keeping prior
+2026-04-22 23:49:44,518 [WARNING] SetPredictor(Espeon): observation eliminated all roles — keeping prior
+2026-04-22 23:49:44,530 [WARNING] SetPredictor(Calyrex-Ice): observation eliminated all roles — keeping prior
+2026-04-22 23:49:44,944 [WARNING] SetPredictor(Crabominable): observation eliminated all roles — keeping prior
+2026-04-22 23:49:45,182 [WARNING] SetPredictor(Bastiodon): observation eliminated all roles — keeping prior
+2026-04-22 23:49:45,185 [WARNING] SetPredictor(Kleavor): observation eliminated all roles — keeping prior
+2026-04-22 23:49:45,557 [WARNING] SetPredictor(Rhyperior): observation eliminated all roles — keeping prior
+2026-04-22 23:49:46,088 [WARNING] SetPredictor(Gholdengo): observation eliminated all roles — keeping prior
+2026-04-22 23:49:46,591 [WARNING] SetPredictor(Zacian): observation eliminated all roles — keeping prior
+2026-04-22 23:49:46,593 [WARNING] SetPredictor(Araquanid): observation eliminated all roles — keeping prior
+2026-04-22 23:49:46,685 [WARNING] SetPredictor(Bellossom): observation eliminated all roles — keeping prior
+2026-04-22 23:49:46,685 [WARNING] SetPredictor(Bellossom): observation eliminated all roles — keeping prior
+2026-04-22 23:49:47,005 [WARNING] SetPredictor(Gardevoir): observation eliminated all roles — keeping prior
+2026-04-22 23:49:47,251 [INFO] Pipeline done: processed=175 failed=0 illusion_team=1 illusion_break=1
+2026-04-22 23:49:47,251 [INFO] Illusion reconstruction: all 1 breaks handled.
+
+=================================================================
+DATASET HEALTH REPORT
+=================================================================
+  Replays cached        : 383
+  Rating range          : 1900 – 2434
+  Rating mean           : 2075
+  Illusion team replays : 1
+  Illusion break replays: 1
+
+  Trajectory files (.npz): 766
+  Total turns (both POVs): 20,144
+  Valid (usable) turns   : 19,321 (95.9%)
+  filter_for_training    : 823 (4.1%)
+    of which parse_failure: 25 (0.12%)
+  NaN/Inf files          : 0
+
+  *** Illusion breaks present in dataset — see pipeline log for
+      per-replay reconstruction success/failure details ***
+
+CHECKPOINT REACHED: 383 replays scraped and processed.
+Review the health report above, then re-run with --continue
+to scale to 50,000 replays.
+

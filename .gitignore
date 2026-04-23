@@ -4,3 +4,9 @@ __pycache__/
 .env
 *.pt
 *.ckpt
+
+# Large data files — tracked externally
+data/holidayougi/
+data/holidayougi_probe/
+data/raw_replays/
+data/trajectories/

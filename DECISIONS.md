@@ -585,3 +585,99 @@ Expected output:
 - `data/raw_replays/gen9randombattle/` — 100 .json + .log files
 - `data/trajectories/gen9randombattle/` — 200 .npz files (2 per replay)
 - `data/dataset_report.md` — summary report
+
+## Phase 3 Dataset Expansion — Main Training Corpus (April 2026)
+
+### Final Combined Dataset Statistics
+
+Source: HolidayOugi/pokemon-showdown-replays (HuggingFace) + original 383-replay pilot scrape.
+
+| Metric | Value |
+|--------|-------|
+| Total replays | 101,311 |
+| Trajectory files (.npz) | 202,622 (2 per replay) |
+| Total turns (both POVs) | 5,529,652 |
+| Valid (usable) turns | 5,302,040 (95.9%) |
+| filter_for_training turns | 227,612 (4.1%) |
+| — of which parse_failure | 9,810 (0.18%) |
+| NaN/Inf files | 0 |
+| Disk footprint | 1.1 GB (data/trajectories/gen9randombattle/) |
+| Estimated load time | ~84 seconds (sequential, all npz) |
+
+### Rating Distribution (processed replays, 95,648 rated)
+
+| Metric | Value |
+|--------|-------|
+| Min | 1900 (filter applied) |
+| Max | 2547 |
+| Mean | 2072.5 |
+| Median | 2049.0 |
+| p90 | 2258 |
+| p95 | 2306 |
+| p99 | 2385 |
+
+### Date Distribution
+
+| | |
+|-|-|
+| Earliest replay | 2022-12-22 (Gen 9 RB launch period) |
+| Latest replay | 2026-04-21 |
+| Coverage | Dec 2022 – Apr 2026 (3 years 4 months) |
+
+### Storage Locations
+
+| Data | Path |
+|------|------|
+| HolidayOugi parquet files (8 parts, 3.2 GB) | data/holidayougi/ |
+| Original scraped replays (383 JSON+log) | data/raw_replays/gen9randombattle/ |
+| All trajectory npz files | data/trajectories/gen9randombattle/ |
+
+### Dataset Cutoff
+
+HolidayOugi latest replay uploadtime: **1776787094** (2026-04-21 UTC).
+Player supplement scrape: NOT RUN (see deviations below).
+Effective main dataset cutoff: **2026-04-21**.
+
+Phase 9 data collection must use `uploadtime > 1776787094` to avoid overlap.
+
+### Normalized Player List (Phase 9 supplement reference)
+
+The following 30 high-ELO players (all 2250–2515 peak rating) are verified for
+future Phase 9 supplement scraping via `scripts/run_player_supplement.py`:
+
+aqua, michaelderbeste2, pokeblade101, teresbahji, milkreo, referrals, smokyaim,
+articoo, delta2777, dra15v2, helicopyer, 70to90gxe, masterj007, sigurdzz, drizzle,
+pentav, wintersim, galak0, cephaleid, fatmarmot, assidion, daruma, bauses, firehills,
+sebasdb, norman2, lizardune, emptybrackets, mylifeisdance, piyush21
+
+### Deviations from Original Directive
+
+1. **Player supplement (Step 4) not run.** The directive specified a player-based
+   supplement covering July 23, 2025 – present. During execution, the full HolidayOugi
+   dataset was found to extend to April 21, 2026 (not July 22, 2025 as initially
+   probed from part 1 only). The user confirmed "let's not do anything about the
+   2-day gap between 21st April and today," which was interpreted as authorization
+   to skip Step 4. The supplement directory (data/raw_replays/supplement/) is empty.
+   Impact: zero — the corpus already covers through April 21, 2026 at full density.
+   Remediation: run `python scripts/run_player_supplement.py` in Phase 9 with the
+   updated SUPPLEMENT_CUTOFF = 1776873600 (2026-04-22T00:00:00Z).
+
+2. **Illusion team count (169) < Illusion break count (1716).** This is expected
+   behaviour, not a bug. `_has_illusion_team` scans switch/drag lines for Zoroark/Zorua
+   species — but Zoroark enters disguised as another species, so its switch line shows
+   the disguise species. Only replays where Zoroark switches in a second time after
+   breaking show up in switch lines. The break count (1716, 1.7%) is the reliable
+   figure; all 10 spot-checked break-flagged replays were confirmed true positives.
+
+3. **Per-part rating disparity.** Parts 4 and 5 of HolidayOugi had only 2,522 and
+   4,158 qualifying replays vs 10k–31k for other parts. Root cause: these parts have
+   mean ratings of 1289 and 1245 respectively — roughly half of part 1 (mean 1582).
+   The HolidayOugi dataset appears internally partitioned by rating tier, not by date;
+   parts 4–5 contain predominantly low-ELO games across all time periods.
+
+4. **Step 6 Illusion monitoring note.** The original scraper pipeline uses
+   `_has_illusion_team` from scraper.py which undercounts (see point 2). For Phase 9,
+   consider replacing with a log-text regex that detects Zoroark's disguised switch-in
+   (i.e., scan for Zoroark in `|replace|` or `|detailschange|` events, not just
+   `|switch|`/`|drag|`).
+
